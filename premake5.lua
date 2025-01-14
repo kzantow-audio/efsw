@@ -1,10 +1,10 @@
 newoption { trigger = "verbose", description = "Build efsw with verbose mode." }
 newoption { trigger = "strip-symbols", description = "Strip debugging symbols in other file ( only for relwithdbginfo configuration )." }
-newoption { trigger = "c++11", description = "Build efsw with C++11" }
+newoption { trigger = "thread-sanitizer", description ="Compile with ThreadSanitizer" }
 
 efsw_major_version	= "1"
 efsw_minor_version	= "0"
-efsw_patch_version	= "1"
+efsw_patch_version	= "2"
 efsw_version		= efsw_major_version .. "." .. efsw_minor_version .. "." .. efsw_patch_version
 
 function get_include_paths()
@@ -26,10 +26,8 @@ function get_include_paths()
 		return paths
 	end
 
-	local include_paths = { }
 	local file = io.popen( "echo | gcc -Wp,-v -x c++ - -fsyntax-only 2>&1 | grep -v '#' | grep '/'", 'r' )
-
-	include_paths = _insert_include_paths( file )
+	local include_paths = _insert_include_paths( file )
 
 	if next(include_paths) == nil then
 		file = io.popen( "echo | clang++ -Wp,-v -x c++ - -fsyntax-only 2>&1 | grep -v '#' | grep '/' | grep -v 'nonexistent'", 'r' )
@@ -82,6 +80,14 @@ function conf_warnings()
 	else
 		defines { "_SCL_SECURE_NO_WARNINGS" }
 	end
+
+	if _OPTIONS["thread-sanitizer"] then
+		buildoptions { "-fsanitize=thread" }
+		linkoptions { "-fsanitize=thread" }
+		if not os.istarget("macosx") then
+			links { "tsan" }
+		end
+	end
 end
 
 function conf_links()
@@ -114,7 +120,7 @@ workspace "efsw"
 	location("./make/" .. os.target() .. "/")
 	targetdir("./bin")
 	configurations { "debug", "release", "relwithdbginfo" }
-	platforms { "x86_64", "x86" }
+	platforms { "x86_64", "x86", "ARM", "ARM64" }
 
 	if os.istarget("windows") then
 		osfiles = "src/efsw/platform/win/*.cpp"
@@ -127,10 +133,7 @@ workspace "efsw"
 		defines { "EFSW_VERBOSE" }
 	end
 
-	if _OPTIONS["c++11"] then
-		cppdialect "C++11"
-		defines { "EFSW_USE_CXX11" }
-	end
+	cppdialect "C++11"
 
 	objdir("obj/" .. os.target() .. "/")
 
@@ -139,6 +142,12 @@ workspace "efsw"
 
 	filter "platforms:x86_64"
 		architecture "x86_64"
+
+	filter "platforms:arm"
+		architecture "ARM"
+
+	filter "platforms:arm64"
+		architecture "ARM64"
 
 	project "efsw-static-lib"
 		kind "StaticLib"
